@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+
+	"github.com/chatzikalymnios/goget/internal/utils"
 )
 
 func main() {
@@ -29,6 +31,23 @@ func main() {
 		return
 	}
 
+	out := os.Stdout
+	if *outputFile != "" {
+		f, err := os.OpenFile(*outputFile, os.O_WRONLY|os.O_CREATE,0660)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening file: %v\n", err)
+			os.Exit(1)
+		}
+		defer f.Close()
+
+		out = f
+	}
+
+	if *concurrencyLevel < 1 {
+		fmt.Fprintf(out, "Error: concurrency level can't be less than 1\n")
+		os.Exit(1)
+	}
+
 	if *goToBackground {
 		// Move process to background.
 	}
@@ -37,21 +56,30 @@ func main() {
 		// Redirect stdout to /dev/null.
 	}
 
-	if *outputFile != "" {
-		// Redirect stdout to output file.
+	lines := flag.Args()
+	if *inputFile != "" {
+		lines, err = utils.ReadLines(*inputFile)
+		if err != nil {
+			fmt.Fprintf(out, "Error reading file: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
-	if *inputFile != "" {
-		// Get all download links from file.
-	} else {
-		// Get all download links from flag.Args().
+	urls, err := utils.StringToURL(lines)
+	if err != nil {
+		fmt.Fprintf(out, "Error parsing URLs: %v\n", err)
+		os.Exit(1)
 	}
+
+	utils.DownloadURLs(urls, *concurrencyLevel, *outputDirectory, out, *quiet)
+
+	//fmt.Println(urls)
 
 	fmt.Println(*numTries)
 	fmt.Println(*goToBackground)
 	fmt.Println(*quiet)
-	fmt.Println(*inputFile)
-	fmt.Println(*outputFile)
-	fmt.Println(*outputDirectory)
-	fmt.Println(*concurrencyLevel)
+	//fmt.Println(*inputFile)
+	//fmt.Println(*outputFile)
+	//fmt.Println(*outputDirectory)
+	//fmt.Println(*concurrencyLevel)
 }
