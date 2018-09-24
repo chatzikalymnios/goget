@@ -7,48 +7,77 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strings"
 	"sync"
+	"time"
 )
 
 // DownloadURLs downloads all provided URLs concurrently. It limits
 // the number of concurrent downloads to the provided concurrencyLevel.
-func DownloadURLs(urls []url.URL, concurrencyLevel int, outputDirectory string, out io.Writer, quiet bool) error {
+func DownloadURLs(urls []url.URL, concurrencyLevel int, outputDirectory string) error {
 	sem := NewSemaphore(concurrencyLevel)
-	errors := make(chan error)
+	stop := make(chan struct{})
+	done := false
+	errors := make(chan error, len(urls))
 	var wg sync.WaitGroup
 
-	for _, u := range urls {
+	pp := NewProgressPrinter(len(urls))
+
+	for i, u := range urls {
 		wg.Add(1)
 
-		go func(u url.URL) {
+		go func(u url.URL, i int) {
 			defer wg.Done()
 
 			sem.Down()
 			if u.Scheme == "http" || u.Scheme == "https" {
-				filePath := path.Join(outputDirectory, path.Base(u.Path))
-				err := httpFetch(filePath, u.String())
+				err := httpFetch(outputDirectory, path.Base(u.Path), u.String(), &pp.progressWriters[i])
 				errors <- err
 			}
 			sem.Up()
-		}(u)
+
+		}(u, i)
 	}
+
+	ticker := time.NewTicker(1 * time.Second)
 
 	go func() {
 		wg.Wait()
+		time.Sleep(1 * time.Second)
+		ticker.Stop()
+		close(stop)
 		close(errors)
 	}()
 
+	for !done {
+		select {
+		case <-ticker.C:
+			pp.PrintProgress()
+		case <-stop:
+			done = true
+		}
+	}
+
+	var allErrors []string
+
 	for err := range errors {
 		if err != nil {
-			fmt.Fprintf(out, "error downloading file: %v\n", err)
+			allErrors = append(allErrors, err.Error())
 		}
+	}
+
+	if len(allErrors) > 0 {
+		return fmt.Errorf(strings.Join(allErrors, "\n"))
 	}
 
 	return nil
 }
 
-func httpFetch(filePath string, url string) error {
-	out, err := os.Create(filePath + ".part")
+func httpFetch(outputDirectory string, fileName string, url string, pw *ProgressWriter) error {
+	filePath := path.Join(outputDirectory, fileName)
+	partFilePath := filePath + ".part"
+
+	out, err := os.Create(partFilePath)
 	if err != nil {
 		return err
 	}
@@ -60,12 +89,18 @@ func httpFetch(filePath string, url string) error {
 	}
 	defer resp.Body.Close()
 
-	_, err = io.Copy(out, resp.Body)
+	pw.filename = fileName
+	pw.startTime = time.Now()
+	pw.total = uint64(resp.ContentLength)
+
+	_, err = io.Copy(out, io.TeeReader(resp.Body, pw))
 	if err != nil {
 		return err
 	}
 
-	err = os.Rename(filePath + ".part", filePath)
+	pw.endTime = time.Now()
+
+	err = os.Rename(partFilePath, filePath)
 	if err != nil {
 		return err
 	}

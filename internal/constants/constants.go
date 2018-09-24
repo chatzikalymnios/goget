@@ -11,3 +11,18 @@ var SupportedUrlSchemes = map[string]struct{}{
 	"http":  struct{}{},
 	"https": struct{}{},
 }
+
+const (
+	_ = 1 << (10 * iota)
+	KiB
+	MiB
+	GiB
+	TiB
+)
+
+const (
+	KB = 1e3
+	MB = 1e6
+	GB = 1e9
+	TB = 1e12
+)
