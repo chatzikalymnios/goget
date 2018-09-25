@@ -15,7 +15,7 @@ Make sure that `$GOPATH` is defined and that `$GOPATH/bin` is in
 your `$PATH`.
 
 ```
-$ go install github.com/chatzikalymnios/goget/cmd/goget
+$ go get github.com/chatzikalymnios/goget/cmd/goget
 ```
 
 ## Usage
