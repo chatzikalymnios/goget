@@ -1,6 +1,6 @@
 # goget
 
-A very simple `wget` clone written in go. It supports concurrent
+A very simple `wget` clone written in Go. It supports concurrent
 downloads over `http`.
 
 ## System Information
